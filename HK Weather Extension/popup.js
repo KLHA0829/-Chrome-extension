@@ -35,26 +35,28 @@ function getTempClass(temp) {
     return '';
 }
 
-function formatHtmlReport(data, sourceStationName) {
+function formatHtmlReport(data, sourceStationName = null) {
     let html = '';
     const { current, forecast } = data;
 
-    const title = `根據您偵測到的位置所做的天氣報告 (數據來自最接近的 ${sourceStationName} 氣象站)`;
-    html += `<h2>${title}</h2>`;
+    if (sourceStationName) {
+        const title = `根據您偵測到的位置所做的天氣報告 (數據來自最接近的 ${sourceStationName} 氣象站)`;
+        html += `<h2>${title}</h2>`;
 
-    let districtTemp = "沒有數據", districtRain = "沒有雨量數據";
-    current.temperature.data.forEach(item => {
-        if (item.place === sourceStationName) districtTemp = item.value ?? '沒有數據';
-    });
-    if (current.rainfall) {
-        current.rainfall.data.forEach(item => {
-            if (item.place === sourceStationName && item.max !== undefined) {
-                districtRain = `${item.min ?? item.max}-${item.max} ${item.unit}`;
-            }
+        let districtTemp = "沒有數據", districtRain = "沒有雨量數據";
+        current.temperature.data.forEach(item => {
+            if (item.place === sourceStationName) districtTemp = item.value ?? '沒有數據';
         });
+        if (current.rainfall) {
+            current.rainfall.data.forEach(item => {
+                if (item.place === sourceStationName && item.max !== undefined) {
+                    districtRain = `${item.min ?? item.max}-${item.max} ${item.unit}`;
+                }
+            });
+        }
+        html += `<p><b>氣溫：</b><span class="${getTempClass(districtTemp)}">${districtTemp} °C</span></p>`;
+        html += `<p><b>過去一小時雨量：</b>${districtRain}</p>`;
     }
-    html += `<p><b>氣溫：</b><span class="${getTempClass(districtTemp)}">${districtTemp} °C</span></p>`;
-    html += `<p><b>過去一小時雨量：</b>${districtRain}</p>`;
     
     html += `<h2>香港整體天氣報告</h2>`;
     const overallTemp = current.temperature.data[0]?.value ?? 'N/A';
@@ -85,45 +87,62 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusDiv = document.getElementById('status');
     const contentDiv = document.getElementById('report-content');
 
+    // Helper function to fetch weather data from the API
+    async function fetchWeatherData() {
+        const [currentRes, forecastRes] = await Promise.all([
+            fetch('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=tc'),
+            fetch('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=flw&lang=tc')
+        ]);
+
+        if (!currentRes.ok || !forecastRes.ok) {
+            throw new Error('無法從香港天文台獲取數據。');
+        }
+
+        const current = await currentRes.json();
+        const forecast = await forecastRes.json();
+        return { current, forecast };
+    }
+
+    // Displays weather report, with or without a specific station
+    async function displayWeather(stationName = null, userCoords = null) {
+        try {
+            statusDiv.textContent = '正在獲取天氣數據...';
+            const weatherData = await fetchWeatherData();
+            let nearestStation = stationName;
+
+            // If we have user coordinates, find the nearest station from the fetched data
+            if (userCoords) {
+                const availableStations = weatherData.current.temperature.data.map(s => s.place);
+                nearestStation = findNearestStation(userCoords, availableStations);
+            }
+            
+            statusDiv.style.display = 'none';
+            contentDiv.innerHTML = formatHtmlReport(weatherData, nearestStation);
+
+        } catch (error) {
+            statusDiv.innerHTML = `<h2 style="color: #e06c75;">錯誤</h2><p>${error.message}</p>`;
+        }
+    }
+
     statusDiv.textContent = '正在偵測您的位置...';
 
     navigator.geolocation.getCurrentPosition(
-        async (position) => {
+        // Success Callback: We have the user's location
+        (position) => {
             const { latitude, longitude } = position.coords;
-            statusDiv.textContent = '正在獲取天氣數據...';
-
-            try {
-                const [currentRes, forecastRes] = await Promise.all([
-                    fetch('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=tc'),
-                    fetch('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=flw&lang=tc')
-                ]);
-
-                if (!currentRes.ok || !forecastRes.ok) {
-                    throw new Error('無法從香港天文台獲取數據。');
-                }
-
-                const current = await currentRes.json();
-                const forecast = await forecastRes.json();
-                
-                const availableStations = current.temperature.data.map(s => s.place);
-                const nearestStation = findNearestStation({ lat: latitude, lon: longitude }, availableStations);
-
-                if (!nearestStation) {
-                    throw new Error('無法找到附近的氣象站。');
-                }
-                
-                statusDiv.style.display = 'none';
-                contentDiv.innerHTML = formatHtmlReport({ current, forecast }, nearestStation);
-
-            } catch (error) {
-                statusDiv.innerHTML = `<h2 style="color: #e06c75;">錯誤</h2><p>${error.message}</p>`;
-            }
+            displayWeather(null, { lat: latitude, lon: longitude });
         },
+        // Error Callback: We could not get the user's location
         (error) => {
-            let message = '無法獲取您的位置。';
-            if (error.code === 1) message = '您拒絕了位置資訊請求。請在瀏覽器設定中允許此擴充功能存取您的位置。';
-            statusDiv.innerHTML = `<h2 style="color: #e06c75;">錯誤</h2><p>${message}</p>`;
+            let message = '無法偵測您的位置，將顯示香港整體天氣。';
+            if (error.code === 1) { // PERMISSION_DENIED
+                message = '您已拒絕位置資訊請求，將顯示香港整體天氣。';
+            }
+            statusDiv.textContent = message;
+            // Display the general weather report without a specific station
+            displayWeather();
         },
+        // Geolocation options
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 });
