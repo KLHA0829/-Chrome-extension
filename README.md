@@ -16,7 +16,7 @@
 *   **數據來源可靠**：所有天氣數據均來自「香港天文台」的官方開放數據 API，確保資訊的準確性和及時性。
 
 ## 安裝方式
-1.  **下載專案**：點擊本頁面右上方的 `Code` 按鈕，然後選擇 `Download ZIP`，並將其解壓縮到您電腦的任意位置。或者使用 `git clone https://github.com/your-username/your-repo-name.git` 複製本儲存庫。
+1.  **下載專案**：點擊本頁面右上方的 `Code` 按鈕，然後選擇 `Download ZIP`，並將其解壓縮到您電腦的任意位置。或者使用 `git clone https://github.com/KLHA0829/-Chrome-extension.git` 複製本儲存庫。
 2.  **打開擴充功能頁面**：在您的 Chrome 瀏覽器網址列輸入 `chrome://extensions` 並前往。
 3.  **啟用開發者模式**：在頁面的右上角，找到並開啟「開發者模式」的開關。
 4.  **載入未封裝的項目**：點擊左上角的「載入未封裝的擴充功能」按鈕。
